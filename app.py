@@ -23,7 +23,7 @@ def read_uploaded_file(uploaded_file):
                 if not file_list:
                     st.error("ZIP फ़ाइल के भीतर कोई भी .csv या .txt फ़ाइल नहीं मिली।")
                     return None
-                first_file = file_list
+                first_file = file_list[0]
                 with z.open(first_file) as f:
                     content = f.read()
                     try:
@@ -91,10 +91,6 @@ if len(mag) < 3:
     st.stop()
 
 pi_B, pi_T, I, P = engine.score(mag)
-
-# =========================================================
-# गाडे अपग्रेडेड कड़ा फिल्टर: यह 74 नकली अलर्ट्स को हटाता है
-# =========================================================
 events = filter_gade_events(P, threshold, window=15)
 
 c1, c2, c3, c4 = st.columns(4)
