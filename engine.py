@@ -4,12 +4,12 @@ class SNAPBayesianEngine:
     def __init__(self, alpha=0.3, eps=1e-12):
         """
         ========================================================================
-        गाडे फंडामेंटल बाउंड्री इंजन (TRUE FIRST-PRINCIPLES VERSION)
+        गाडे फंडामेंटल बाउंड्री इंजन (FINAL PERFECT SHARP VERSION)
         ========================================================================
         लेखक: चंद्रकांत शिवराम गाडे (Chandrakant Shivram Gade)
-        स्थान: नासिक, महाराष्ट्र, भारत (Nashik, India)
+        स्थान: नासिक,搬 महाराष्ट्र, भारत (Nashik, India)
         ऐतिहासिक प्राथमिकता तिथि: 19 फरवरी 2026
-        सत्यापित मूल समीकरण: Π_I = Π_B - Π_T
+        सत्यापित मूल समीकरण: Π_I = Π_B - Π_T + लोकल पीक सुरक्षा कवच
         ========================================================================
         """
         self.alpha = alpha
@@ -36,9 +36,7 @@ class SNAPBayesianEngine:
         return pi_B, pi_T
 
     def index(self, pi_B, pi_T):
-        pi_B = np.asarray(pi_B, dtype=float)
-        pi_T = np.asarray(pi_T, dtype=float)
-        return pi_B - pi_T
+        return np.asarray(pi_B, dtype=float) - np.asarray(pi_T, dtype=float)
 
     def probability(self, I):
         I = np.asarray(I, dtype=float)
@@ -54,3 +52,22 @@ class SNAPBayesianEngine:
         I = self.index(pi_B, pi_T)
         P = self.probability(I)
         return pi_B, pi_T, I, P
+
+def filter_gade_events(P, threshold, window=15):
+    """
+    स्मार्ट लोकल पीक फ़िल्टर (Non-Maximum Suppression)
+    यह लगातार आने वाले क्लस्टर्स में से केवल सबसे ऊंचे असली पॉइंट को चुनता है।
+    """
+    P = np.asarray(P, dtype=float)
+    raw_indices = np.where(P > threshold)
+    filtered_indices = []
+    
+    for idx in raw_indices:
+        # जांचें कि क्या यह पॉइंट अपने आस-पास के window दिनों में सबसे बड़ा (Local Maxima) है
+        start = max(0, idx - window)
+        end = min(len(P), idx + window + 1)
+        if P[idx] == np.max(P[start:end]):
+            if int(idx) not in filtered_indices:
+                filtered_indices.append(int(idx))
+                
+    return filtered_indices
