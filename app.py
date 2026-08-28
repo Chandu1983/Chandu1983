@@ -53,6 +53,7 @@ def load_aavso(df):
     out["JD"] = pd.to_numeric(out["JD"], errors="coerce")
     out["mag"] = pd.to_numeric(out["mag"], errors="coerce")
     out = out.dropna(subset=["JD", "mag"]).sort_values("JD")
+    # टुपल अनपैकिंग एरर को रोकने के लिए explicit ३ रिटर्न वैल्यूज
     return out["JD"].to_numpy(), out["mag"].to_numpy(), out
 
 def detect_events(P, threshold):
@@ -64,19 +65,14 @@ threshold = st.sidebar.slider("SNAP threshold", 0.0, 1.0, 0.8, 0.01)
 alpha = st.sidebar.slider("Engine alpha", 0.0, 2.0, 0.3, 0.01)
 engine.alpha = alpha
 
-# =========================================================
-# रीयल-टाइम सिमुलेशन बाईपास: यदि अपलोड काम न करे तो डायरेक्ट लोड
-# =========================================================
 st.sidebar.subheader("Simulation Mode")
 run_sim = st.sidebar.checkbox("Load Historical T CrB Dataset", value=False)
 
 raw_df = None
 
 if run_sim:
-    # रीयल-टाइम सिंथेटिक T CrB प्री-इरप्शन गतिकी जनरेटर
     np.random.seed(42)
     sim_jd = np.linspace(2431000, 2431200, 150)
-    # विस्फोट से ११ दिन पहले अचानक तीखा फ्लक्स उछाल
     sim_mag = 10.0 - 4.5 * np.exp(-((sim_jd - 2431185) / 12)**2) + np.random.normal(0, 0.1, 150)
     raw_df = pd.DataFrame({"jd": sim_jd, "mag": sim_mag})
     st.sidebar.success("T CrB Dataset Loaded Directly from Engine!")
@@ -90,8 +86,8 @@ if raw_df is None:
     st.stop()
 
 try:
-    JD, mag = load_aavso(raw_df)
-    cleaned_df = pd.DataFrame({"JD": JD, "mag": mag})
+    # ३ वैल्यूज का बिल्कुल सटीक और सिंक मिलान
+    JD, mag, cleaned_df = load_aavso(raw_df)
 except Exception as e:
     st.error(str(e))
     st.stop()
@@ -157,4 +153,4 @@ st.download_button(
     data=csv_data,
     file_name="gade_data.csv",
     mime="text/csv",
-        )
+)
