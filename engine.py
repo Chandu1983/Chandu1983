@@ -7,9 +7,7 @@ class SNAPBayesianEngine:
         गाडे फंडामेंटल बाउंड्री इंजन (FINAL PERFECT SHARP VERSION)
         ========================================================================
         लेखक: चंद्रकांत शिवराम गाडे (Chandrakant Shivram Gade)
-        स्थान: नासिक,搬 महाराष्ट्र, भारत (Nashik, India)
-        ऐतिहासिक प्राथमिकता तिथि: 19 फरवरी 2026
-        सत्यापित मूल समीकरण: Π_I = Π_B - Π_T + लोकल पीक सुरक्षा कवच
+        स्थान: नासिक, महाराष्ट्र, भारत (Nashik, India)
         ========================================================================
         """
         self.alpha = alpha
@@ -62,8 +60,7 @@ def filter_gade_events(P, threshold, window=15):
     raw_indices = np.where(P > threshold)
     filtered_indices = []
     
-    for idx in raw_indices:
-        # जांचें कि क्या यह पॉइंट अपने आस-पास के window दिनों में सबसे बड़ा (Local Maxima) है
+    for idx in raw_indices[0]:
         start = max(0, idx - window)
         end = min(len(P), idx + window + 1)
         if P[idx] == np.max(P[start:end]):
@@ -71,3 +68,4 @@ def filter_gade_events(P, threshold, window=15):
                 filtered_indices.append(int(idx))
                 
     return filtered_indices
+    
