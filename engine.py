@@ -68,4 +68,3 @@ def filter_gade_events(P, threshold, window=15):
                 filtered_indices.append(int(idx))
                 
     return filtered_indices
-    
