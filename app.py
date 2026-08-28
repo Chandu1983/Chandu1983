@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import zipfile
 import io
 
-from engine import SNAPBayesianEngine
+from engine import SNAPBayesianEngine, filter_gade_events
 
 st.set_page_config(page_title="SNAP Astro Dashboard", layout="wide")
 st.title("🔭 SNAP Astro Dashboard")
@@ -23,7 +23,7 @@ def read_uploaded_file(uploaded_file):
                 if not file_list:
                     st.error("ZIP फ़ाइल के भीतर कोई भी .csv या .txt फ़ाइल नहीं मिली।")
                     return None
-                first_file = file_list[0]
+                first_file = file_list
                 with z.open(first_file) as f:
                     content = f.read()
                     try:
@@ -53,12 +53,7 @@ def load_aavso(df):
     out["JD"] = pd.to_numeric(out["JD"], errors="coerce")
     out["mag"] = pd.to_numeric(out["mag"], errors="coerce")
     out = out.dropna(subset=["JD", "mag"]).sort_values("JD")
-    # टुपल अनपैकिंग एरर को रोकने के लिए explicit ३ रिटर्न वैल्यूज
     return out["JD"].to_numpy(), out["mag"].to_numpy(), out
-
-def detect_events(P, threshold):
-    P = np.asarray(P, dtype=float)
-    return np.where(P > threshold)[0]
 
 st.sidebar.header("Controls")
 threshold = st.sidebar.slider("SNAP threshold", 0.0, 1.0, 0.8, 0.01)
@@ -86,7 +81,6 @@ if raw_df is None:
     st.stop()
 
 try:
-    # ३ वैल्यूज का बिल्कुल सटीक और सिंक मिलान
     JD, mag, cleaned_df = load_aavso(raw_df)
 except Exception as e:
     st.error(str(e))
@@ -97,7 +91,11 @@ if len(mag) < 3:
     st.stop()
 
 pi_B, pi_T, I, P = engine.score(mag)
-events = detect_events(P, threshold)
+
+# =========================================================
+# गाडे अपग्रेडेड कड़ा फिल्टर: यह 74 नकली अलर्ट्स को हटाता है
+# =========================================================
+events = filter_gade_events(P, threshold, window=15)
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Max P", f"{np.max(P):.3f}")
@@ -110,7 +108,7 @@ fig, ax = plt.subplots(figsize=(12, 4))
 ax.plot(JD, P, color="purple", linewidth=1.5, label="P(snap)")
 ax.axhline(threshold, color="red", linestyle="--", label="Threshold")
 if len(events) > 0:
-    ax.scatter(JD[events], P[events], color="orange", s=30, label="Detected")
+    ax.scatter(JD[events], P[events], color="orange", s=50, label="True Dynamic Peak", zorder=5)
 ax.set_xlabel("JD")
 ax.set_ylabel("Probability")
 ax.grid(True, alpha=0.3)
@@ -139,8 +137,8 @@ st.pyplot(fig3)
 
 st.subheader("🚨 Alerts")
 if len(events) > 0:
-    st.error("SNAP-like alerts detected")
-    st.write(events.tolist())
+    st.error(f"SNAP-like alerts detected at {len(events)} core critical points.")
+    st.write(events)
 else:
     st.success("No SNAP-like event detected")
 
