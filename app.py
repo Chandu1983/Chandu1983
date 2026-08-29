@@ -119,7 +119,7 @@ fig, ax = plt.subplots(figsize=(12, 3.5))
 ax.plot(JD, P, color="purple", linewidth=1.2, label="P(snap)")
 ax.axhline(threshold, color="red", linestyle="--", label="Threshold Boundary")
 if events:
-    ax.scatter(JD[events], P[events], color="orange", s=80, label="True Dynamic Peak", zorder=5)
+    ax.scatter(JD[events], P[events], color="orange", s=98, label="True Dynamic Peak", zorder=5)
 ax.set_xlabel("Julian Date (JD)")
 ax.set_ylabel("Probability Matrix")
 ax.grid(True, alpha=0.3)
