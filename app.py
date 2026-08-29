@@ -57,7 +57,7 @@ def load_aavso(df):
     out = out.groupby("clean_jd", as_index=False)["clean_mag"].mean()
     return out["clean_jd"].to_numpy(), out["clean_mag"].to_numpy(), det_star
 
-threshold = st.sidebar.slider("SNAP threshold", 0.0, 1.0, 0.98, 0.01)
+threshold = st.sidebar.slider("SNAP threshold", 0.0, 1.0, 0.80, 0.01)
 alpha = st.sidebar.slider("Engine alpha", 0.0, 2.0, 0.3, 0.01)
 engine.alpha = alpha
 all_stars_data = {}
