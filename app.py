@@ -166,17 +166,17 @@ if st.button("🧪 Run Automated Mathematical Audit"):
         test_1_passed = np.allclose(t1_I, 0.0, atol=1e-7)
         if test_1_passed:
             st.success("✅ **Test 1: Perfect Equilibrium (B = T) — PASSED**")
-            st.write(f"• Measured Gade Index: `{float(t1_I):.12f}`")
+            st.write(f"• Measured Gade Index: `{float(t1_I[0]):.12f}`")
         else:
             st.error("❌ **Test 1: Perfect Equilibrium (B = T) — FAILED**")
 
         st.markdown(" ") 
         snap_data = [6.0, 5.0, 7.0]
         t2_pi_B, t2_pi_T, t2_I, t2_P = test_engine.score(snap_data)
-        test_2_passed = t2_I > 0.5 and t2_P > 0.85
+        test_2_passed = np.max(t2_I) > 0.5 and np.max(t2_P) > 0.85
         if test_2_passed:
             st.success("✅ **Test 2: SNAP Peak-to-Decline Trigger — PASSED**")
-            st.write(f"• Measured Probability: `{t2_P*100:.2f}%`")
+            st.write(f"• Measured Probability: `{np.max(t2_P)*100:.2f}%`")
         else:
             st.error("❌ **Test 2: SNAP Peak-to-Decline Trigger — FAILED**")
             
