@@ -17,9 +17,9 @@ class SNAPBayesianEngine:
         z = 2.5 * I + 1.5 * np.gradient(I) + 0.2 * np.array([np.std(I[max(0, i-50):i+1]) for i in range(len(I))])
         return B, T, I, 1.0 / (1.0 + np.exp(-z))
 
-def filter_gade_events(P, threshold, window=1200): # हाइपर मैक्रो विंडो 1200 सेट
-    P, raw, filtered = np.asarray(P, dtype=float), np.where(P > threshold), []
-    for idx in raw[0]:
+def filter_gade_events(P, threshold, window=1200):
+    P, raw, filtered = np.asarray(P, dtype=float), np.where(P > threshold)[0], []
+    for idx in raw:
         if P[idx] == np.max(P[max(0, idx-window):min(len(P), idx+window+1)]) and int(idx) not in filtered:
             filtered.append(int(idx))
     return filtered
@@ -45,11 +45,17 @@ def load_aavso(df):
     jd_c = next((c for c in df.columns if "jd" in c or "julian" in c), None)
     mag_c = next((c for c in df.columns if "mag" in c or "magnitude" in c or "flux" in c), None)
     if not jd_c or not mag_c: raise ValueError("Columns mismatch.")
-    det_star = str(df[next((c for c in df.columns if "star" in c or "name" in c), df.columns[0])].iloc[0]).strip()
-    out = df[[jd_c, mag_c]].copy()
-    out.columns = ["JD", "mag"]
-    out = out.dropna().astype(float).sort_values("JD").groupby("JD", as_index=False).mean()
-    return out["JD"].to_numpy(), out["mag"].to_numpy(), det_star
+    
+    star_col = next((c for c in df.columns if "star" in c or "name" in c or "object" in c), None)
+    det_star = "Unknown"
+    if star_col and not df[star_col].empty:
+        det_star = str(df[star_col].iloc[0]).strip()
+    
+    df["clean_jd"] = pd.to_numeric(df[jd_c], errors="coerce")
+    df["clean_mag"] = pd.to_numeric(df[mag_c], errors="coerce")
+    out = df.dropna(subset=["clean_jd", "clean_mag"]).sort_values("clean_jd")
+    out = out.groupby("clean_jd", as_index=False)["clean_mag"].mean()
+    return out["clean_jd"].to_numpy(), out["clean_mag"].to_numpy(), det_star
 
 threshold = st.sidebar.slider("SNAP threshold", 0.0, 1.0, 0.98, 0.01)
 alpha = st.sidebar.slider("Engine alpha", 0.0, 2.0, 0.3, 0.01)
@@ -80,11 +86,11 @@ if not all_stars_data:
 sel_star = st.selectbox("Available Stars:", list(all_stars_data.keys()))
 JD, mag, det_star_internal = load_aavso(all_stars_data[sel_star])
 
-# तारे का नाम, शुरुआती और अंतिम तारीख दिखाने वाला ऑटोमैटिक बैनर
-st.info(f"✨ **Gade Automated File Metadata Discovery Engine**\n\n• 🌟 **तारे का नाम (Identified Target):** `{det_star_internal if det_star_internal != 'nan' else sel_star}`\n\n• 📅 **डेटा अवधि (Observations Epoch):** From JD `{JD[0]:.4f}` to `{JD[-1]:.4f}` (कुल `{len(JD)}` अनूठे दिन दर्ज)")
+# ऑटोमैटिक मैटाडेटा बैनर (तारा नाम + शुरुआती एवं अंतिम तारीख)
+st.info(f"✨ **Gade Automated File Metadata Discovery Engine**\n\n• 🌟 **तारे का नाम (Identified Target):** `{det_star_internal if det_star_internal != 'Unknown' and det_star_internal != 'nan' else sel_star}`\n\n• 📅 **डेटा अवधि (Observations Epoch):** From JD `{JD[0]:.4f}` to `{JD[-1]:.4f}` (कुल `{len(JD)}` अनूठे दिन दर्ज)")
 
 pi_B, pi_T, I, P = engine.score(mag)
-events = filter_gade_events(P, threshold, window=1200) # 1200 की विंडो
+events = filter_gade_events(P, threshold, window=1200)
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Max P", f"{np.max(P):.3f}"); c2.metric("Mean P", f"{np.mean(P):.3f}"); c3.metric("Detected Events", str(len(events))); c4.metric("Threshold", f"{threshold:.2f}")
@@ -120,7 +126,7 @@ if st.button("🧪 Run Automated Mathematical Audit"):
     test_1_passed = np.allclose(t1_I, 0.0, atol=1e-7)
     if test_1_passed:
         st.success("✅ **Test 1: Perfect Equilibrium (B = T) — PASSED**")
-        st.write(f"• Measured Gade Index: `{float(t1_I[0]) if isinstance(t1_I, np.ndarray) else float(t1_I):.12f}`")
+        st.write(f"• Measured Gade Index: `{float(t1_I) if not isinstance(t1_I, np.ndarray) else float(t1_I[0]):.12f}`")
     else: st.error("❌ Test 1 Failed")
     st.markdown(" ")
     _, _, t2_I, t2_P = test_engine.score([6.0, 5.0, 7.0])
