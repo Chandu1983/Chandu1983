@@ -52,15 +52,20 @@ class SNAPBayesianEngine:
         return pi_B, pi_T, I, P
 
 def filter_gade_events(P, threshold, window=15):
+    """
+    Non-Maximum Suppression (NMS) Peak Filtering (Gade Fixed Version).
+    """
     P = np.asarray(P, dtype=float)
-    raw_indices = np.where(P > threshold)
+    raw_indices = np.where(P > threshold)[0] # [0] लगाने से लिस्ट बिल्कुल शुद्ध नंबर्स में बदल जाएगी
     filtered_indices = []
+    
     for idx in raw_indices:
-        start = max(0, idx - window)
-        end = min(len(P), idx + window + 1)
+        start = max(0, int(idx) - window)
+        end = min(len(P), int(idx) + window + 1)
         if P[idx] == np.max(P[start:end]):
             if int(idx) not in filtered_indices:
                 filtered_indices.append(int(idx))
+                
     return filtered_indices
 
 # ==============================================================================
@@ -100,8 +105,6 @@ def load_aavso(df):
     if df is None or df.empty:
         raise ValueError("Target dataset matrix is empty.")
     
-    # ADVANCED SMART COLUMN PARSER (GADE ROBUST UPDATE)
-    # Automatically fixes variations like JD, jd, Magnitude, mag, MAG, Magnitude (V) etc.
     df.columns = [str(c).strip().lower() for c in df.columns]
     
     jd_col = None
