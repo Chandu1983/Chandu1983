@@ -62,7 +62,7 @@ def load_aavso(df):
 
 # Sidebar Configuration Control Panel
 st.sidebar.header("⚙️ Gade Engine Control Panel")
-threshold = st.sidebar.slider("SNAP Probability Threshold", 0.0, 1.0, 0.80, 0.01)
+threshold = st.sidebar.slider("SNAP Probability Threshold", 0.0, 1.0, 0.98, 0.01)
 alpha = st.sidebar.slider("Engine Alpha (Tension Weight)", 0.0, 2.0, 0.3, 0.01)
 engine.alpha = alpha
 
