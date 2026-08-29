@@ -6,7 +6,7 @@ import zipfile
 import io
 
 # ==============================================================================
-# GADE CORE ENGINE WITH REAL NOISE FILTERING
+# GADE ASTRO-GRADE NOISE RESILIENT SYSTEM ENGINE
 # ==============================================================================
 class SNAPBayesianEngine:
     def __init__(self, alpha=0.3, eps=1e-12):
@@ -23,9 +23,9 @@ class SNAPBayesianEngine:
 
     def compute_state(self, mag):
         F = self.flux(mag)
-        # वास्तविक AAVSO डेटा के शोर (Noise) को साफ करने के लिए रोलिंग फ़िल्टर
-        if len(F) > 10:
-            F = pd.Series(F).rolling(window=11, center=True, min_periods=1).mean().to_numpy()
+        # हाइपर नॉइज़ फ़िल्टर: घने AAVSO डेटा के बिखराव को पूरी तरह शांत करने के लिए
+        if len(F) > 50:
+            F = pd.Series(F).rolling(window=51, center=True, min_periods=1).mean().to_numpy()
         S = self.normalize(F)
         dS = np.gradient(S) if len(S) >= 2 else np.zeros_like(S)
         return S, 1.0 + self.alpha * dS
@@ -37,8 +37,9 @@ class SNAPBayesianEngine:
         I = np.asarray(I, dtype=float)
         if len(I) < 2: return np.full_like(I, 0.5)
         dI = np.gradient(I)
-        vol = np.array([np.std(I[max(0, i - 15):i + 1]) for i in range(len(I))])
-        z = 2.0 * I + 1.2 * dI + 0.4 * vol # पीक को और तीखा करने के लिए वेटेज बढ़ाया
+        # वोलैटिलिटी विंडो को घने डेटा के लिए सुधारा गया
+        vol = np.array([np.std(I[max(0, i - 30):i + 1]) for i in range(len(I))])
+        z = 2.5 * I + 1.5 * dI + 0.3 * vol
         return 1.0 / (1.0 + np.exp(-z))
 
     def score(self, mag):
@@ -46,7 +47,11 @@ class SNAPBayesianEngine:
         I = self.index(pi_B, pi_T)
         return pi_B, pi_T, I, self.probability(I)
 
-def filter_gade_events(P, threshold, window=50):
+def filter_gade_events(P, threshold, window=500):
+    """
+    Macro Non-Maximum Suppression (NMS) for dense datasets.
+    Rejects high-frequency local triggers to isolate 1 or 2 core cosmic events.
+    """
     P = np.asarray(P, dtype=float)
     raw_indices = np.where(P > threshold)[0]
     filtered = []
@@ -57,7 +62,7 @@ def filter_gade_events(P, threshold, window=50):
     return filtered
 
 # ==============================================================================
-# STREAMLIT UI ARCHITECTURE
+# STREAMLIT UI MANAGEMENT
 # ==============================================================================
 st.set_page_config(page_title="SNAP Multi-Star Dashboard", layout="wide")
 st.title("🔭 SNAP Astro Dashboard (Multi-Star Version)")
@@ -93,12 +98,12 @@ def load_aavso(df):
     out.columns = ["JD", "mag"]
     out["JD"] = pd.to_numeric(out["JD"], errors="coerce")
     out["mag"] = pd.to_numeric(out["mag"], errors="coerce")
-    # ओवरलैपिंग (एक ही समय के कई डेटा पॉइंट्स) को साफ करना
+    # ओवरलैपिंग शोर को शांत करने के लिए दैनिक मीन का समावेशन
     out = out.dropna().sort_values("JD").groupby("JD", as_index=False).mean()
     return out["JD"].to_numpy(), out["mag"].to_numpy()
 
 st.sidebar.header("Controls")
-threshold = st.sidebar.slider("SNAP threshold", 0.0, 1.0, 0.98, 0.01) # डिफ़ॉल्ट 0.98 सेट किया शोर रोकने के लिए
+threshold = st.sidebar.slider("SNAP threshold", 0.0, 1.0, 0.98, 0.01)
 alpha = st.sidebar.slider("Engine alpha", 0.0, 2.0, 0.3, 0.01)
 engine.alpha = alpha
 
@@ -135,11 +140,11 @@ except Exception as e:
     st.stop()
 
 pi_B, pi_T, I, P = engine.score(mag)
-events = filter_gade_events(P, threshold, window=50) # विंडो बढ़ाकर 50 की ताकि केवल क्लस्टर के मुख्य पीक दिखें
+events = filter_gade_events(P, threshold, window=500) # मैक्रो विंडो साइज 500
 
 c1, c2, c3, c4 = st.columns(4)
-c2.metric("Mean P", f"{np.mean(P):.3f}")
 c1.metric("Max P", f"{np.max(P):.3f}")
+c2.metric("Mean P", f"{np.mean(P):.3f}")
 c3.metric("Detected Events", str(len(events)))
 c4.metric("Threshold", f"{threshold:.2f}")
 
@@ -147,7 +152,7 @@ st.subheader(f"📈 Instability Probability — {selected_star}")
 fig, ax = plt.subplots(figsize=(12, 3.5))
 ax.plot(JD, P, color="purple", linewidth=1.2, label="P(snap)")
 ax.axhline(threshold, color="red", linestyle="--", label="Threshold")
-if events: ax.scatter(JD[events], P[events], color="orange", s=70, label="True Dynamic Peak", zorder=5)
+if events: ax.scatter(JD[events], P[events], color="orange", s=80, label="True Dynamic Peak", zorder=5)
 ax.set_xlabel("JD"); ax.set_ylabel("Probability"); ax.grid(True, alpha=0.3); ax.legend()
 st.pyplot(fig)
 
@@ -188,7 +193,7 @@ if st.button("🧪 Run Automated Mathematical Audit"):
         test_1_passed = np.allclose(t1_I, 0.0, atol=1e-7)
         if test_1_passed:
             st.success("✅ **Test 1: Perfect Equilibrium (B = T) — PASSED**")
-            st.write(f"• Measured Gade Index: `{float(t1_I[0]):.12f}`") # एरे इंडेक्सिंग एरर फिक्स यहाँ है
+            st.write(f"• Measured Gade Index: `{float(t1_I[0]):.12f}`")
         else: st.error("❌ Test 1 Failed")
 
         st.markdown(" ")
