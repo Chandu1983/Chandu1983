@@ -4,56 +4,52 @@ import numpy as np
 import matplotlib.pyplot as plt
 import zipfile
 import io
-
 from engine import SNAPBayesianEngine, filter_gade_events
 
-st.set_page_config(page_title="SNAP Astro Dashboard", layout="wide")
-st.title("🔭 SNAP Astro Dashboard")
-st.caption("AAVSO data → preprocessing → SNAP engine → alerts")
+st.set_page_config(page_title="SNAP Multi-Star Dashboard", layout="wide")
+st.title("🔭 SNAP Astro Dashboard (Multi-Star Version)")
+st.caption("Advanced Multi-Star Parallel Preprocessing -> SNAP Engine -> Automated Core Selection")
 
 engine = SNAPBayesianEngine()
 
-def read_uploaded_file(uploaded_file):
+def read_zip_multi_files(uploaded_file):
+    star_datasets = {}
     try:
-        file_name = uploaded_file.name.lower()
         uploaded_file.seek(0)
-        if file_name.endswith(".zip"):
-            with zipfile.ZipFile(uploaded_file) as z:
-                file_list = [f for f in z.namelist() if f.lower().endswith((".csv", ".txt"))]
-                if not file_list:
-                    st.error("ZIP फ़ाइल के भीतर कोई भी .csv या .txt फ़ाइल नहीं मिली।")
-                    return None
-                first_file = file_list[0]
-                with z.open(first_file) as f:
+        with zipfile.ZipFile(uploaded_file) as z:
+            file_list = [f for f in z.namelist() if f.lower().endswith((".csv", ".txt"))]
+            if not file_list:
+                st.error("No valid CSV or TXT data matrices discovered within ZIP container.")
+                return None
+            for file_path in file_list:
+                star_name = file_path.split("/")[-1].replace(".csv", "").replace(".txt", "").strip()
+                with z.open(file_path) as f:
                     content = f.read()
                     try:
-                        return pd.read_csv(io.BytesIO(content))
+                        df = pd.read_csv(io.BytesIO(content))
                     except Exception:
-                        return pd.read_csv(io.BytesIO(content), delim_whitespace=True)
-        else:
-            try:
-                return pd.read_csv(uploaded_file)
-            except Exception:
-                uploaded_file.seek(0)
-                return pd.read_csv(uploaded_file, delim_whitespace=True)
+                        df = pd.read_csv(io.BytesIO(content), delim_whitespace=True)
+                    if not df.empty:
+                        star_datasets[star_name] = df
+        return star_datasets
     except Exception as e:
-        st.error(f"File read failed: {e}")
+        st.error(f"ZIP payload ingestion failed: {e}")
         return None
 
 def load_aavso(df):
     if df is None or df.empty:
-        raise ValueError("Empty dataset")
+        raise ValueError("Target dataset matrix is empty.")
     cols = {c.lower().strip(): c for c in df.columns}
     jd_col = cols.get("jd")
     mag_col = cols.get("mag")
     if jd_col is None or mag_col is None:
-        raise ValueError("File must contain JD and mag columns")
+        raise ValueError("Data specification mismatch: Missing target JD and Mag columns.")
     out = df[[jd_col, mag_col]].copy()
     out.columns = ["JD", "mag"]
     out["JD"] = pd.to_numeric(out["JD"], errors="coerce")
     out["mag"] = pd.to_numeric(out["mag"], errors="coerce")
     out = out.dropna(subset=["JD", "mag"]).sort_values("JD")
-    return out["JD"].to_numpy(), out["mag"].to_numpy(), out
+    return out["JD"].to_numpy(), out["mag"].to_numpy()
 
 st.sidebar.header("Controls")
 threshold = st.sidebar.slider("SNAP threshold", 0.0, 1.0, 0.8, 0.01)
@@ -63,31 +59,44 @@ engine.alpha = alpha
 st.sidebar.subheader("Simulation Mode")
 run_sim = st.sidebar.checkbox("Load Historical T CrB Dataset", value=False)
 
-raw_df = None
+all_stars_data = {}
 
 if run_sim:
     np.random.seed(42)
     sim_jd = np.linspace(2431000, 2431200, 150)
     sim_mag = 10.0 - 4.5 * np.exp(-((sim_jd - 2431185) / 12)**2) + np.random.normal(0, 0.1, 150)
-    raw_df = pd.DataFrame({"jd": sim_jd, "mag": sim_mag})
-    st.sidebar.success("T CrB Dataset Loaded Directly from Engine!")
+    all_stars_data["T_CrB_1946_Simulated"] = pd.DataFrame({"jd": sim_jd, "mag": sim_mag})
+    st.sidebar.success("Default T CrB Dataset Pre-loaded.")
 else:
-    uploaded_file = st.file_uploader("Upload AAVSO CSV/TXT or ZIP File", type=["csv", "txt", "zip"])
-    if uploaded_file is not None:
-        raw_df = read_uploaded_file(uploaded_file)
+    uploaded_files = st.file_uploader("Upload AAVSO Files (Multiple CSVs or a Single ZIP)", type=["csv", "txt", "zip"], accept_multiple_files=True)
+    if uploaded_files:
+        for u_file in uploaded_files:
+            if u_file.name.lower().endswith(".zip"):
+                zip_data = read_zip_multi_files(u_file)
+                if zip_data:
+                    all_stars_data.update(zip_data)
+            else:
+                df_raw = pd.read_csv(u_file) if u_file.name.lower().endswith(".csv") else pd.read_csv(u_file, delim_whitespace=True)
+                star_name = u_file.name.replace(".csv", "").replace(".txt", "").strip()
+                all_stars_data[star_name] = df_raw
 
-if raw_df is None:
-    st.info("Please upload an AAVSO file or check 'Load Historical T CrB Dataset' in the sidebar to view metrics.")
+if not all_stars_data:
+    st.info("System Idle. Upload valid AAVSO files or toggle Simulation Mode to execute pipeline.")
     st.stop()
 
+st.subheader("🎯 Select Star for Analysis")
+selected_star = st.selectbox("Available Stars in System:", list(all_stars_data.keys()))
+raw_df = all_stars_data[selected_star]
+
 try:
-    JD, mag, cleaned_df = load_aavso(raw_df)
+    JD, mag = load_aavso(raw_df)
+    cleaned_df = pd.DataFrame({"JD": JD, "mag": mag})
 except Exception as e:
-    st.error(str(e))
+    st.error(f"Error processing {selected_star}: {str(e)}")
     st.stop()
 
 if len(mag) < 3:
-    st.error("Not enough valid rows after cleaning.")
+    st.error("Data density warning: Not enough valid steps after preprocessing.")
     st.stop()
 
 pi_B, pi_T, I, P = engine.score(mag)
@@ -99,7 +108,7 @@ c2.metric("Mean P", f"{np.mean(P):.3f}")
 c3.metric("Detected Events", str(len(events)))
 c4.metric("Threshold", f"{threshold:.2f}")
 
-st.subheader("📈 Instability Probability")
+st.subheader(f"📈 Instability Probability — {selected_star}")
 fig, ax = plt.subplots(figsize=(12, 4))
 ax.plot(JD, P, color="purple", linewidth=1.5, label="P(snap)")
 ax.axhline(threshold, color="red", linestyle="--", label="Threshold")
@@ -111,7 +120,7 @@ ax.grid(True, alpha=0.3)
 ax.legend()
 st.pyplot(fig)
 
-st.subheader("🌟 Light Curve")
+st.subheader(f"🌟 Light Curve — {selected_star}")
 fig2, ax2 = plt.subplots(figsize=(12, 4))
 ax2.plot(JD, mag, color="black", linewidth=1.2, label="Magnitude")
 ax2.invert_yaxis()
@@ -121,7 +130,7 @@ ax2.grid(True, alpha=0.3)
 ax2.legend()
 st.pyplot(fig2)
 
-st.subheader("🧠 Engine Terms")
+st.subheader(f"🧠 Engine Terms — {selected_star}")
 fig3, ax3 = plt.subplots(figsize=(12, 4))
 ax3.plot(JD, pi_B, label=r"$\Pi_B$", color="steelblue")
 ax3.plot(JD, pi_T, label=r"$\Pi_T$", color="darkgreen")
@@ -133,18 +142,42 @@ st.pyplot(fig3)
 
 st.subheader("🚨 Alerts")
 if len(events) > 0:
-    st.error(f"SNAP-like alerts detected at {len(events)} core critical points.")
+    st.error(f"SNAP-like alerts detected at {len(events)} core critical points for {selected_star}.")
     st.write(events)
 else:
-    st.success("No SNAP-like event detected")
+    st.success(f"No SNAP-like event detected for {selected_star}.")
 
 with st.expander("Show cleaned data"):
     st.dataframe(cleaned_df)
 
-csv_data = cleaned_df.to_csv(index=False).encode("utf-8")
-st.download_button(
-    "Download data as CSV",
-    data=csv_data,
-    file_name="gade_data.csv",
-    mime="text/csv",
-)
+# ==============================================================================
+# ⚙️ AUTOMATED MATHEMATICAL AUDIT MODULE
+# ==============================================================================
+st.markdown("---")
+st.subheader("⚙️ Gade Engine Integrity & Math Validation")
+st.caption("स्वचालित गणितीय ऑडिट मॉड्यूल — थ्योरी और कोडिंग की लाइव शुद्धता की जांच")
+
+if st.button("🧪 Run Automated Mathematical Audit"):
+    with st.spinner("इंजन के सूत्रों का शुद्ध गणितीय परिकलन किया जा रहा है..."):
+        test_engine = SNAPBayesianEngine(alpha=alpha)
+        flat_data = [10.0, 10.0, 10.0]
+        t1_pi_B, t1_pi_T, t1_I, t1_P = test_engine.score(flat_data)
+        test_1_passed = np.allclose(t1_I, 0.0, atol=1e-7)
+        if test_1_passed:
+            st.success("✅ **Test 1: Perfect Equilibrium (B = T) — PASSED**")
+            st.write(f"• **मापा गया Gade Index ($\\Pi_I$):** `{float(t1_I):.12f}`")
+        else:
+            st.error("❌ **Test 1: Perfect Equilibrium (B = T) — FAILED**")
+
+        st.markdown(" ") 
+        snap_data = [6.0, 5.0, 7.0]
+        t2_pi_B, t2_pi_T, t2_I, t2_P = test_engine.score(snap_data)
+        test_2_passed = t2_I > 0.5 and t2_P > 0.85
+        if test_2_passed:
+            st.success("✅ **Test 2: SNAP Peak-to-Decline Trigger — PASSED**")
+            st.write(f"• **أअस्थिरता की संभावना ($P_{\\text{{snap}}}$):** `{t2_P*100:.2f}%`")
+        else:
+            st.error("❌ **Test 2: SNAP Peak-to-Decline Trigger — FAILED**")
+        if test_1_passed and test_2_passed:
+            st.balloons()
+            st.toast("Gade Engine ऑडिट पूरा हुआ!", icon="🔬")
