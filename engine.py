@@ -1,70 +1,80 @@
+# ==============================================================================
+# GADE UNIVERSAL DIMENSIONLESS BOUNDARY METRIC (CORE MATHEMATICAL ENGINE)
+# Framework Construction: Pi_I = Pi_B - Pi_T
+# Lead Inventor: Chandrakant Shivram Gade, Nashik, Maharashtra, India.
+# Version: 5.0.0 | Multi-Star Production Blueprint
+# ==============================================================================
+
 import numpy as np
+import pandas as pd
 
 class SNAPBayesianEngine:
-    def __init__(self, alpha=0.3, eps=1e-12):
+    def __init__(self, alpha=0.3):
         """
-        ========================================================================
-        गाडे फंडामेंटल बाउंड्री इंजन (FINAL PERFECT SHARP VERSION)
-        ========================================================================
-        लेखक: चंद्रकांत शिवराम गाडे (Chandrakant Shivram Gade)
-        स्थान: नासिक, महाराष्ट्र, भारत (Nashik, India)
-        ========================================================================
+        Initializes the Gade Dimensionless Core Engine components.
         """
         self.alpha = alpha
-        self.eps = eps
-        self.c = 299792458.0          
-        self.G = 6.67430e-11          
-        self.hbar = 1.0545718e-34     
-        self.l_p_sq = (self.hbar * self.G) / (self.c**3)
+        self.eps = 1e-12
 
-    def flux(self, mag):
-        mag = np.asarray(mag, dtype=float)
-        return 10 ** (-0.4 * mag)
+    def flux(self, m):
+        """Converts astronomical magnitudes to pure radiation flux vector."""
+        return 10 ** (-0.4 * np.asarray(m, dtype=float))
 
     def normalize(self, x):
-        x = np.asarray(x, dtype=float)
-        return x / (np.mean(x) + self.eps)
+        """Normalizes the fluid flux relative to its dynamic baseline mean."""
+        return np.asarray(x, dtype=float) / (np.mean(x) + self.eps)
 
-    def compute_state(self, mag):
-        F = self.flux(mag)
-        S = self.normalize(F)
-        dS = np.gradient(S) if len(S) >= 2 else np.zeros_like(S)
-        pi_B = S
-        pi_T = 1.0 + self.alpha * dS
-        return pi_B, pi_T
+    def compute_state(self, m):
+        """
+        Computes Pi_B (Driving Force) and Pi_T (Resistance Tension).
+        Implements the mandatory 101-day rolling window to destroy fake noise.
+        """
+        F = self.flux(m)
+        
+        # Core 101-day dynamic rolling filter to wipe out atmospheric turbulence
+        if len(F) > 50:
+            F = pd.Series(F).rolling(window=101, center=True, min_periods=1).mean().to_numpy()
+        
+        # Pi_B represents normalized core driving fluid pressure matrix
+        B = self.normalize(F)
+        
+        # Pi_T captures active boundary structural tension / skin friction drag
+        grad_B = np.gradient(B) if len(B) >= 2 else np.zeros_like(B)
+        T = 1.0 + self.alpha * grad_B
+        return B, T
 
-    def index(self, pi_B, pi_T):
-        return np.asarray(pi_B, dtype=float) - np.asarray(pi_T, dtype=float)
-
-    def probability(self, I):
-        I = np.asarray(I, dtype=float)
+    def score(self, m):
+        """
+        Calculates the Gade Instability Index (Pi_I = Pi_B - Pi_T) 
+        and maps it directly to a Sigmoid Probability curve.
+        """
+        B, T = self.compute_state(m)
+        I = B - T  # Pure Dimensionless Inversion State Ledger
+        
         if len(I) < 2:
-            return np.full_like(I, 0.5, dtype=float)
-        dI = np.gradient(I)
-        vol = np.array([np.std(I[max(0, i - 5):i + 1]) for i in range(len(I))])
-        z = 1.2 * I + 0.8 * dI + 0.6 * vol
-        return 1.0 / (1.0 + np.exp(-z))
+            return B, T, I, np.full_like(I, 0.5)
+            
+        # Core dynamic stability vector tracking
+        grad_I = np.gradient(I)
+        std_I = np.array([np.std(I[max(0, i-50):i+1]) for i in range(len(I))])
+        
+        z = 2.5 * I + 1.5 * grad_I + 0.2 * std_I
+        P = 1.0 / (1.0 + np.exp(-z))  # Sigmoid Mapping Layer Execution
+        return B, T, I, P
 
-    def score(self, mag):
-        pi_B, pi_T = self.compute_state(mag)
-        I = self.index(pi_B, pi_T)
-        P = self.probability(I)
-        return pi_B, pi_T, I, P
-
-def filter_gade_events(P, threshold, window=15):
+def filter_gade_events(P, threshold, window=1200):
     """
-    स्मार्ट लोकल पीक फ़िल्टर (Non-Maximum Suppression)
-    यह लगातार आने वाले क्लस्टर्स में से केवल सबसे ऊंचे असली पॉइंट को चुनता है।
+    Implements the non-maximum local peak suppression filter.
+    Locks true dynamic peaks within a strict 1200-point epoch window boundary.
     """
     P = np.asarray(P, dtype=float)
-    raw_indices = np.where(P > threshold)
-    filtered_indices = []
+    raw_indices = np.where(P > threshold)[0]
+    filtered = []
     
-    for idx in raw_indices[0]:
-        start = max(0, idx - window)
-        end = min(len(P), idx + window + 1)
-        if P[idx] == np.max(P[start:end]):
-            if int(idx) not in filtered_indices:
-                filtered_indices.append(int(idx))
-                
-    return filtered_indices
+    for idx in raw_indices:
+        w_start = max(0, idx - window)
+        w_end = min(len(P), idx + window + 1)
+        if P[idx] == np.max(P[w_start:w_end]):
+            if int(idx) not in filtered:
+                filtered.append(int(idx))
+    return filtered
