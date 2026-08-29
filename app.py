@@ -4,8 +4,68 @@ import numpy as np
 import matplotlib.pyplot as plt
 import zipfile
 import io
-from engine import SNAPBayesianEngine, filter_gade_events
 
+# ==============================================================================
+# GADE FUNDAMENTAL BOUNDARY ENGINE (EMBEDDED FOR STREAMLIT)
+# ==============================================================================
+class SNAPBayesianEngine:
+    def __init__(self, alpha=0.3, eps=1e-12):
+        self.alpha = alpha
+        self.eps = eps
+        self.c = 299792458.0          
+        self.G = 6.67430e-11          
+        self.hbar = 1.0545718e-34     
+        self.l_p_sq = (self.hbar * self.G) / (self.c**3)
+
+    def flux(self, mag):
+        mag = np.asarray(mag, dtype=float)
+        return 10 ** (-0.4 * mag)
+
+    def normalize(self, x):
+        x = np.asarray(x, dtype=float)
+        return x / (np.mean(x) + self.eps)
+
+    def compute_state(self, mag):
+        F = self.flux(mag)
+        S = self.normalize(F)
+        dS = np.gradient(S) if len(S) >= 2 else np.zeros_like(S)
+        pi_B = S
+        pi_T = 1.0 + self.alpha * dS
+        return pi_B, pi_T
+
+    def index(self, pi_B, pi_T):
+        return np.asarray(pi_B, dtype=float) - np.asarray(pi_T, dtype=float)
+
+    def probability(self, I):
+        I = np.asarray(I, dtype=float)
+        if len(I) < 2:
+            return np.full_like(I, 0.5, dtype=float)
+        dI = np.gradient(I)
+        vol = np.array([np.std(I[max(0, i - 5):i + 1]) for i in range(len(I))])
+        z = 1.2 * I + 0.8 * dI + 0.6 * vol
+        return 1.0 / (1.0 + np.exp(-z))
+
+    def score(self, mag):
+        pi_B, pi_T = self.compute_state(mag)
+        I = self.index(pi_B, pi_T)
+        P = self.probability(I)
+        return pi_B, pi_T, I, P
+
+def filter_gade_events(P, threshold, window=15):
+    P = np.asarray(P, dtype=float)
+    raw_indices = np.where(P > threshold)
+    filtered_indices = []
+    for idx in raw_indices:
+        start = max(0, idx - window)
+        end = min(len(P), idx + window + 1)
+        if P[idx] == np.max(P[start:end]):
+            if int(idx) not in filtered_indices:
+                filtered_indices.append(int(idx))
+    return filtered_indices
+
+# ==============================================================================
+# STREAMLIT DASHBOARD INTERFACE
+# ==============================================================================
 st.set_page_config(page_title="SNAP Multi-Star Dashboard", layout="wide")
 st.title("🔭 SNAP Astro Dashboard (Multi-Star Version)")
 st.caption("Advanced Multi-Star Parallel Preprocessing -> SNAP Engine -> Automated Core Selection")
@@ -39,11 +99,23 @@ def read_zip_multi_files(uploaded_file):
 def load_aavso(df):
     if df is None or df.empty:
         raise ValueError("Target dataset matrix is empty.")
-    cols = {c.lower().strip(): c for c in df.columns}
-    jd_col = cols.get("jd")
-    mag_col = cols.get("mag")
+    
+    # ADVANCED SMART COLUMN PARSER (GADE ROBUST UPDATE)
+    # Automatically fixes variations like JD, jd, Magnitude, mag, MAG, Magnitude (V) etc.
+    df.columns = [str(c).strip().lower() for c in df.columns]
+    
+    jd_col = None
+    mag_col = None
+    
+    for c in df.columns:
+        if "jd" in c or "julian" in c:
+            jd_col = c
+        if "mag" in c or "magnitude" in c or "flux" in c:
+            mag_col = c
+            
     if jd_col is None or mag_col is None:
-        raise ValueError("Data specification mismatch: Missing target JD and Mag columns.")
+        raise ValueError("Data specification mismatch: Missing target JD and Magnitude columns.")
+        
     out = df[[jd_col, mag_col]].copy()
     out.columns = ["JD", "mag"]
     out["JD"] = pd.to_numeric(out["JD"], errors="coerce")
@@ -166,7 +238,7 @@ if st.button("🧪 Run Automated Mathematical Audit"):
         test_1_passed = np.allclose(t1_I, 0.0, atol=1e-7)
         if test_1_passed:
             st.success("✅ **Test 1: Perfect Equilibrium (B = T) — PASSED**")
-            st.write(f"• Measured Gade Index: `{float(t1_I[0]):.12f}`")
+            st.write(f"• Measured Gade Index: `{float(t1_I):.12f}`")
         else:
             st.error("❌ **Test 1: Perfect Equilibrium (B = T) — FAILED**")
 
