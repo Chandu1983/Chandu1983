@@ -4,7 +4,61 @@ import numpy as np
 import matplotlib.pyplot as plt
 import zipfile
 import io
-from engine import SNAPBayesianEngine, filter_gade_events
+
+class SNAPBayesianEngine:
+    def __init__(self, alpha=0.3, eps=1e-12):
+        self.alpha = alpha
+        self.eps = eps
+        self.c = 299792458.0          
+        self.G = 6.67430e-11          
+        self.hbar = 1.0545718e-34     
+        self.l_p_sq = (self.hbar * self.G) / (self.c**3)
+
+    def flux(self, mag):
+        mag = np.asarray(mag, dtype=float)
+        return 10 ** (-0.4 * mag)
+
+    def normalize(self, x):
+        x = np.asarray(x, dtype=float)
+        return x / (np.mean(x) + self.eps)
+
+    def compute_state(self, mag):
+        F = self.flux(mag)
+        S = self.normalize(F)
+        dS = np.gradient(S) if len(S) >= 2 else np.zeros_like(S)
+        pi_B = S
+        pi_T = 1.0 + self.alpha * dS
+        return pi_B, pi_T
+
+    def index(self, pi_B, pi_T):
+        return np.asarray(pi_B, dtype=float) - np.asarray(pi_T, dtype=float)
+
+    def probability(self, I):
+        I = np.asarray(I, dtype=float)
+        if len(I) < 2:
+            return np.full_like(I, 0.5, dtype=float)
+        dI = np.gradient(I)
+        vol = np.array([np.std(I[max(0, i - 5):i + 1]) for i in range(len(I))])
+        z = 1.2 * I + 0.8 * dI + 0.6 * vol
+        return 1.0 / (1.0 + np.exp(-z))
+
+    def score(self, mag):
+        pi_B, pi_T = self.compute_state(mag)
+        I = self.index(pi_B, pi_T)
+        P = self.probability(I)
+        return pi_B, pi_T, I, P
+
+def filter_gade_events(P, threshold, window=15):
+    P = np.asarray(P, dtype=float)
+    raw_indices = np.where(P > threshold)[0]
+    filtered_indices = []
+    for idx in raw_indices:
+        start = max(0, idx - window)
+        end = min(len(P), idx + window + 1)
+        if P[idx] == np.max(P[start:end]):
+            if int(idx) not in filtered_indices:
+                filtered_indices.append(int(idx))
+    return filtered_indices
 
 st.set_page_config(page_title="SNAP Multi-Star Dashboard", layout="wide")
 st.title("🔭 SNAP Astro Dashboard (Multi-Star Version)")
@@ -142,17 +196,14 @@ st.pyplot(fig3)
 
 st.subheader("🚨 Alerts")
 if len(events) > 0:
-    st.error(f"SNAP-like alerts detected at {len(events)} core critical points for {selected_star}.")
+    st.error(f"SNAP-like alerts detected at {len(events)} core critical points.")
     st.write(events)
 else:
-    st.success(f"No SNAP-like event detected for {selected_star}.")
+    st.success("No SNAP-like event detected.")
 
 with st.expander("Show cleaned data"):
     st.dataframe(cleaned_df)
 
-# ==============================================================================
-# ⚙️ AUTOMATED MATHEMATICAL AUDIT MODULE
-# ==============================================================================
 st.markdown("---")
 st.subheader("⚙️ Gade Engine Integrity & Math Validation")
 st.caption("स्वचालित गणितीय ऑडिट मॉड्यूल — थ्योरी और कोडिंग की लाइव शुद्धता की जांच")
@@ -160,6 +211,7 @@ st.caption("स्वचालित गणितीय ऑडिट मॉड�
 if st.button("🧪 Run Automated Mathematical Audit"):
     with st.spinner("इंजन के सूत्रों का शुद्ध गणितीय परिकलन किया जा रहा है..."):
         test_engine = SNAPBayesianEngine(alpha=alpha)
+        
         flat_data = [10.0, 10.0, 10.0]
         t1_pi_B, t1_pi_T, t1_I, t1_P = test_engine.score(flat_data)
         test_1_passed = np.allclose(t1_I, 0.0, atol=1e-7)
@@ -175,9 +227,9 @@ if st.button("🧪 Run Automated Mathematical Audit"):
         test_2_passed = t2_I > 0.5 and t2_P > 0.85
         if test_2_passed:
             st.success("✅ **Test 2: SNAP Peak-to-Decline Trigger — PASSED**")
-            st.write(f"• **أअस्थिरता की संभावना ($P_{\\text{{snap}}}$):** `{t2_P*100:.2f}%`")
+            st.write(f"• **अस्थिरता की संभावना ($P_{\\text{{snap}}}$):** `{t2_P*100:.2f}%`")
         else:
             st.error("❌ **Test 2: SNAP Peak-to-Decline Trigger — FAILED**")
         if test_1_passed and test_2_passed:
             st.balloons()
-            st.toast("Gade Engine ऑडिट पूरा हुआ!", icon="🔬")
+            st.toast("Gade Engine ऑडिट सफलतापूर्वक पूरा हुआ!", icon="🔬")
