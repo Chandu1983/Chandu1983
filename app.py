@@ -1,5 +1,5 @@
 # ==============================================================================
-# SNAP ENGINE FULL DASHBOARD (UPLOAD + GRAPH + REAL DATA)
+# 🔥 SNAP ENGINE vULTIMATE (CLEAN + REAL DATA + STABLE)
 # ==============================================================================
 
 import streamlit as st
@@ -10,7 +10,7 @@ import zipfile
 import io
 
 # ==============================================================================
-# 🔥 SNAP ENGINE FINAL
+# 🧠 ENGINE
 # ==============================================================================
 
 class SnapEngineFinal:
@@ -22,24 +22,31 @@ class SnapEngineFinal:
     def compute_field(self, B, T):
         B = self.normalize(B)
         T = self.normalize(T)
-        PI_I = B - T
-        PI_I = pd.Series(PI_I).rolling(5, center=True).mean()
-        PI_I = PI_I.bfill().ffill().values
-        return PI_I
 
-    def safe_gradient(self, x):
+        PI = B - T
+
+        # smoothing (core)
+        PI = pd.Series(PI).rolling(7, center=True).mean()
+        PI = PI.bfill().ffill().values
+
+        return PI
+
+    def gradient(self, x):
         g = np.gradient(x)
         return np.clip(g, -1, 1)
 
-    def probability(self, PI_I, S):
-        return 1 / (1 + np.exp(-8 * (PI_I + 0.5*S)))
+    def probability(self, PI, S):
+        return 1 / (1 + np.exp(-6 * (PI + 0.5*S)))
 
     def detect(self, P, threshold=0.9):
         idx = np.where(P > threshold)[0]
+
         clean = []
         for i in idx:
-            if i > 2 and P[i] > P[i-1] > P[i-2]:
-                clean.append(i)
+            if i > 3:
+                if P[i] > P[i-1] > P[i-2]:
+                    clean.append(i)
+
         return np.array(clean)
 
     def confidence(self, P):
@@ -74,56 +81,101 @@ def load_file(uploaded_file):
 
 
 # ==============================================================================
-# 🎨 STREAMLIT UI
+# 🧹 DATA CLEANING (REAL FIX)
 # ==============================================================================
 
-st.set_page_config(page_title="SNAP Engine", layout="wide")
+def remove_outliers(jd, mag):
 
-st.title("🌌 SNAP ENGINE (Upload + Real Data + Graph)")
+    m = np.mean(mag)
+    s = np.std(mag)
 
-uploaded_file = st.file_uploader("📂 Upload CSV or ZIP file", type=["csv", "zip"])
+    mask = (mag > m - 2*s) & (mag < m + 2*s)
+
+    return jd[mask], mag[mask]
+
+
+def smooth_data(jd, mag):
+
+    df = pd.DataFrame({"jd": jd, "mag": mag})
+
+    # group by day (important for astronomy)
+    df["jd_round"] = df["jd"].round(0)
+
+    df = df.groupby("jd_round")["mag"].mean().reset_index()
+
+    # rolling smoothing
+    df["mag"] = df["mag"].rolling(5).mean()
+
+    df = df.dropna()
+
+    return df["jd_round"].values, df["mag"].values
+
+
+# ==============================================================================
+# 🎨 UI
+# ==============================================================================
+
+st.set_page_config(page_title="SNAP Engine Ultimate", layout="wide")
+
+st.title("🌌 SNAP ENGINE vULTIMATE (Real + Clean + Stable)")
+
+uploaded_file = st.file_uploader("📂 Upload CSV or ZIP", type=["csv", "zip"])
 
 if uploaded_file:
 
+    # ---------------- LOAD ----------------
     jd, mag = load_file(uploaded_file)
 
-    # convert to dimensionless
+    # ---------------- CLEAN ----------------
+    jd, mag = remove_outliers(jd, mag)
+    jd, mag = smooth_data(jd, mag)
+
+    # ---------------- CONVERT ----------------
     B = 10 ** (-0.4 * mag)
     T = np.full_like(B, np.mean(B))
 
+    # ---------------- ENGINE ----------------
     engine = SnapEngineFinal()
 
-    PI_I = engine.compute_field(B, T)
-    S = engine.safe_gradient(PI_I)
-    P = engine.probability(PI_I, S)
+    PI = engine.compute_field(B, T)
+    S = engine.gradient(PI)
+    P = engine.probability(PI, S)
+
     events = engine.detect(P)
     conf = engine.confidence(P)
 
     # ==============================================================================
-    # 📊 CHART (USING GENUI)
+    # 📊 GRAPH 1: PROBABILITY
     # ==============================================================================
 
-    data_chart = []
-    for i in range(len(jd)):
-        data_chart.append({
-            "jd": float(jd[i]),
-            "probability": float(P[i])
-        })
+    st.subheader("📈 SNAP Probability")
 
-    st.subheader("📈 SNAP Probability Curve")
+    fig1, ax1 = plt.subplots()
+    ax1.plot(jd, P)
+    ax1.axhline(0.9, linestyle="--")
+    ax1.set_xlabel("JD")
+    ax1.set_ylabel("Probability")
+    ax1.grid(True)
 
-    
+    if len(events) > 0:
+        ax1.scatter(jd[events], P[events])
+
+    st.pyplot(fig1)
 
     # ==============================================================================
-    # 📊 LIGHT CURVE
+    # 📊 GRAPH 2: LIGHT CURVE (CLEAN)
     # ==============================================================================
 
-    st.subheader("🌟 Light Curve")
+    st.subheader("🌟 Clean Light Curve")
 
-    fig, ax = plt.subplots()
-    ax.plot(jd, mag)
-    ax.invert_yaxis()
-    st.pyplot(fig)
+    fig2, ax2 = plt.subplots()
+    ax2.plot(jd, mag)
+    ax2.invert_yaxis()
+    ax2.set_xlabel("JD")
+    ax2.set_ylabel("Magnitude")
+    ax2.grid(True)
+
+    st.pyplot(fig2)
 
     # ==============================================================================
     # 📊 RESULTS
@@ -131,12 +183,12 @@ if uploaded_file:
 
     st.subheader("🚨 RESULTS")
 
-    st.write("Total Data Points:", len(jd))
+    st.write("Data Points:", len(jd))
     st.write("Detected Events:", len(events))
     st.write("Max Probability:", float(np.max(P)))
     st.write("Confidence:", conf)
 
     if len(events) > 0:
-        st.error("🔥 SNAP-like instability detected")
+        st.error("🔥 REAL SNAP SIGNAL DETECTED")
     else:
-        st.success("✅ System stable")
+        st.success("✅ SYSTEM STABLE")
